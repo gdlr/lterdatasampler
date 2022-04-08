@@ -1,0 +1,155 @@
+---
+title: "Arctic LTER daily weather data from Toolik Field Station (ARC)"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{arc_weather}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+
+### Dataset sample used 
+
+- `arc_weather`
+
+# Introduction
+
+The `arc_weather` data sample contains selected meteorological records from the Toolik Field Station at Toolik Lake, Alaska, from 1988 - 2018. This data set offers opportunities to explore and wrangle time series data, visualize patterns (e.g. seasonality), and apply different forecasting methods. 
+
+# Data exploration
+
+Attach required packages: 
+```{r setup, message = FALSE, warning = FALSE}
+library(lterdatasampler)
+library(tidyverse)
+library(lubridate)
+library(gganimate)
+library(here)
+library(stringr)
+```
+
+Here, we highlight seasonality in air temperature and precipitation: 
+
+Time series of daily precipitation (millimeters) recorded at Toolik Field Station: 
+```{r}
+ggplot(arc_weather, aes(x = date, y = daily_precip)) +
+  geom_line() +
+  theme_minimal()
+```
+
+Time series of mean daily air temperature (Celsius) recorded at Toolik Field Station: 
+```{r}
+ggplot(arc_weather, aes(x = date, y = mean_airtemp)) +
+  geom_line() +
+  theme_minimal()
+```
+
+Seasonality and stationarity in `arc_weather` presents opportunities to practice summarizing patterns, for example finding the mean temperature by month (i.e., finding the mean of the daily means, grouped by month), and introducing modeling and forecasting methods. 
+
+Below are several examples of data aggregation and summary using useful tools from the [`lubridate`](https://lubridate.tidyverse.org/) package. While not shown here, instructors may want to incorporate tools from the [`tidyverts`](https://tidyverts.org/) suite of R packages containing "tidy tools for time series."
+
+## Wrangling to parse month and year 
+
+Here, we add new columns `month` and `year`, using `lubridate::month()` and `lubridate::year()` to respectively pull out the month and year from the original `date` column. Then, we use `forcats::fct_relevel()` to create an ordered factor of abbreviated month names (e.g. "Jan", "Feb", "Mar", etc.). See also: `tsibble::yearmonth()`. 
+
+```{r}
+parse_ym <- arc_weather %>% 
+  mutate(month = lubridate::month(date), # Add a column with the month (numeric)
+         year = lubridate::year(date)) %>% # Add a column with the year (numeric)
+  mutate(month_abb = fct_relevel(month.abb[month], month.abb)) # Add a column with the month as an abbreviated month name
+```
+
+Fine the *monthly* mean air temperature (by finding the average of daily means, by month and year):
+
+```{r}
+monthly_airtemp <- parse_ym %>% 
+  group_by(month_abb, month, year) %>% 
+  summarize(mean_monthly_airtemp = mean(mean_airtemp, na.rm = TRUE),
+            month = mean(month))
+```
+
+Then we'll create a seasonal plot: 
+```{r}
+# +
+   transition_reveal(index)
+
+plot
+```
+
+```{r}
+ggplot(data = monthly_airtemp, aes(x = month, y = mean_monthly_airtemp, group = year)) +
+  geom_line(aes(color = year)) +
+  scale_color_viridis_d() +
+  coord_polar()
+
+monthly_airtempx <- monthly_airtemp[monthly_airtemp$month==12, ]
+monthly_airtempx$month <- 0
+monthly_new <- rbind(monthly_airtempx, monthly_airtemp)
+
+
+ggplot(data = monthly_new, aes(x = month, y = mean_monthly_airtemp, group = year)) +
+  geom_line(aes(color = year)) +
+  scale_color_viridis_d() +
+  coord_polar() +
+  transition_reveal(as.numeric(year), month)
+
+class(monthly_airtemp$year)
+
+monthly_arrange <- arrange(monthly_new, year, month) %>% 
+  mutate(month2 = str_pad(month, 2, pad = "0")) %>% 
+  mutate(index = paste(year, month, sep = "")) 
+
+vec = seq(1, nrow(monthly_arrange))
+
+monthly_arrange <- monthly_arrange %>% 
+  ungroup() %>% 
+  mutate(row = vec)
+
+g <- ggplot(data = monthly_arrange, aes(x = month, y = mean_monthly_airtemp, group = year, color = mean_monthly_airtemp)) +
+  geom_line() +
+  geom_point() +
+  scale_color_gradient2(low = "lightblue", mid = "white", high = "red") +
+  coord_polar() +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(0, 11), labels = c("Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov")) +
+  # scale_y_continuous(limits = c(-50, 10)) +
+  theme(panel.background = (element_rect(fill = "grey30", color = "grey30")),
+        plot.background = (element_rect(fill = "grey30", color = "grey30")),
+        panel.grid.major = element_line(colour = "grey50"),
+        panel.grid.minor = element_line(colour = "grey50"),
+        axis.text.x = element_text(color = "white"),
+        legend.text = element_text(color = "white"),
+        legend.title = element_text(color = "white"),
+        plot.title = element_text(vjust = -8, color = "white")) +
+  labs(title = "{monthly_arrange$year[frame_along]}") +
+  labs(color = "Temp ºC", y = NULL, x = NULL) +
+  transition_reveal(row) +
+  ease_aes("linear")
+
+g
+
+anim_save(file = "arc_weather.gif")
+
+```
+
+
+
+Enjoy teaching and learning some time series data wrangling and analysis skills with `arc_weather`!
+
+# Acknowledgements
+
+# Citation
+
+Shaver, G. 2019. A multi-year DAILY weather file for the Toolik Field Station at Toolik Lake, AK starting 1988 to present. ver 4. Environmental Data Initiative. https://doi.org/10.6073/pasta/ce0f300cdf87ec002909012abefd9c5c (Accessed 2020-07-04).
+
+
+# How we processed the raw data
+
+`r knitr::spin_child(here::here("data-raw","arc_weather_data.R"))`
